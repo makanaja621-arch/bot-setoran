@@ -4,9 +4,11 @@ import gspread
 from telegram.ext import Updater, MessageHandler, Filters
 from oauth2client.service_account import ServiceAccountCredentials
 
-TOKEN = os.getenv("8216179180:AAFGtV2v4qKw82_QC8sxnG763qBDZ_zhi38")
-SHEET_NAME = os.getenv("Setoran Video")
+# ===== ENV =====
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+SHEET_NAME = os.getenv("SHEET_NAME")
 
+# ===== GOOGLE SHEET AUTH =====
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -29,6 +31,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 sheet = client.open(SHEET_NAME).sheet1
 
+# ===== HANDLE VIDEO =====
 def handle_video(update, context):
     if not update.message.video:
         return
@@ -37,13 +40,16 @@ def handle_video(update, context):
     match = re.search(r"(\d+)", caption)
     point = int(match.group(1)) if match else 1
 
-    username = update.message.from_user.username or update.message.from_user.first_name
+    user = update.message.from_user
+    username = user.username or user.first_name
+
     sheet.append_row([username, point])
 
     update.message.reply_text(f"{username}\n{point}")
 
+# ===== MAIN =====
 def main():
-    updater = Updater(TOKEN, use_context=True)
+    updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(MessageHandler(Filters.video, handle_video))
@@ -53,5 +59,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
