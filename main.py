@@ -1,12 +1,19 @@
 import os
-import re
+import json
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, MessageHandler, Filters, CommandHandler
 import gspread
-from telegram.ext import Updater, MessageHandler, Filters
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ===== ENV =====
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SHEET_NAME = os.getenv("SHEET_NAME")
+
+bot = Bot(token=BOT_TOKEN)
+
+# ===== FLASK =====
+app = Flask(__name__)
 
 # ===== GOOGLE SHEET AUTH =====
 scope = [
@@ -14,48 +21,36 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds_dict = {
-    "type": "service_account",
-    "project_id": os.getenv("GCP_PROJECT_ID"),
-    "private_key_id": os.getenv("GCP_PRIVATE_KEY_ID"),
-    "private_key": os.getenv("GCP_PRIVATE_KEY").replace("\\n", "\n"),
-    "client_email": os.getenv("GCP_CLIENT_EMAIL"),
-    "client_id": os.getenv("GCP_CLIENT_ID"),
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": os.getenv("GCP_CERT_URL")
-}
-
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name(
+    "credentials.json", scope
+)
 client = gspread.authorize(creds)
 sheet = client.open(SHEET_NAME).sheet1
 
-# ===== HANDLE VIDEO =====
-def handle_video(update, context):
-    if not update.message.video:
-        return
+# ===== DISPATCHER =====
+dispatcher = Dispatcher(bot, None, workers=0)
 
-    caption = update.message.caption or ""
-    match = re.search(r"(\d+)", caption)
-    point = int(match.group(1)) if match else 1
+def start(update, context):
+    update.message.reply_text("Bot Setoran Aktif ✅")
 
-    user = update.message.from_user
-    username = user.username or user.first_name
+def handle_text(update, context):
+    text = update.message.text
+    update.message.reply_text(f"Pesan diterima:\n{text}")
 
-    sheet.append_row([username, point])
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_text))
 
-    update.message.reply_text(f"{username}\n{point}")
+# ===== WEBHOOK =====
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot is running!"
 
-# ===== MAIN =====
-def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "ok"
 
-    dp.add_handler(MessageHandler(Filters.video, handle_video))
-
-    updater.start_polling()
-    updater.idle()
-
+# ===== RUN =====
 if __name__ == "__main__":
-    main()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
